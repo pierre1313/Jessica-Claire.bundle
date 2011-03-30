@@ -1,39 +1,41 @@
-from PMS import Plugin, Log, XML, HTTP, JSON, RSS, Utils
-from PMS.MediaXML import MediaContainer, DirectoryItem, PhotoItem
-
 PLUGIN_PREFIX   = "/photos/JessicaClaire"
 ROOT_URL        = "http://www.jessicaclaire.net"
 RSS_FEED        = ROOT_URL + "/rss/"
 
 ####################################################################################################
 def Start():
-  Plugin.AddRequestHandler(PLUGIN_PREFIX, HandlePhotosRequest, "Jessica Claire", "icon-default.png", "art-default.png")
-  Plugin.AddViewGroup("Pictures", viewMode="Pictures", contentType="photos")
+  Plugin.AddPrefixHandler(PLUGIN_PREFIX, MainMenu, "Jessica Claire", "icon-default.png", "art-default.jpg")
+  Plugin.AddViewGroup("Pictures", viewMode="Pictures", mediaType="photos")
+  Plugin.AddViewGroup("Details", viewMode="InfoList", mediaType="items")
+  MediaContainer.art = "art-default.jpg"
+  DirectoryItem.thumb = "icon-default.png"
 
-####################################################################################################
-def HandlePhotosRequest(pathNouns, count):
-  if count == 0:
-    dir = MediaContainer("art-default.png", None, "Jessica Claire")
-    for item in RSS.Parse(RSS_FEED).entries:
-      entry = XML.ElementFromString(item.description, True)
-      imgs = entry.xpath('//img')
-      if len(imgs) > 5:
-        thumb = ''
-        for img in imgs:
-          if img.get('src').find('jessicaclaire.net/images/content') != -1:
-            thumb = img.get('src')
-            
-        summary = entry.text_content()[:400] + '...'
-        dir.AppendItem(DirectoryItem(Utils.EncodeStringToUrlPath(item.link)+'$'+Utils.EncodeStringToUrlPath(item.title), item.title, thumb, summary))
+####################################################################################################  
+
+def MainMenu():
+    dir = MediaContainer(title1="Jessica Claire")
+    for item in XML.ElementFromURL(RSS_FEED).xpath("//item"):
       
-  elif count == 1:
-    (url,title) = pathNouns[0].split('$')
-    dir = MediaContainer("art-default.png", "Pictures", "Jessica Claire", Utils.DecodeUrlPathToString(title))
-    count = 1
-    for img in XML.ElementFromURL(Utils.DecodeUrlPathToString(url), True).xpath('//img'):
-      if img.get('src').find('/images/content') != -1:
-        url = ROOT_URL + img.get('src')
-        dir.AppendItem(PhotoItem(url, 'Photo %d' % count, '', url))
-        count += 1
+      title = item.xpath('.//title')[0].text
+      url = item.xpath('.//guid')[0].text
+      raw_summary = HTML.StringFromElement(item.xpath('.//description')[0]).replace(']]','').replace('<![CDATA[','').replace('&gt;','>').replace('&lt;','<').replace('&nbsp;','')#.text
+      summary = HTML.ElementFromString(raw_summary).text_content()[:400]+"..."
+      try:
+        thumb = HTML.ElementFromString(raw_summary).xpath('.//img')[0].get('src')
+      except:
+        thumb = None
+        
+      dir.Append(Function(DirectoryItem(PictureMenu, title=title, thumb=thumb, summary=summary), url=url))
+
+    return dir
+
+def PictureMenu(sender, url,title = ''):
+  dir = MediaContainer(viewGroup="Pictures", title1="Jessica Claire", title2=title)
+  count = 1
+  for img in HTML.ElementFromURL(url).xpath('//img'):
+    if img.get('src').find('/images/content') != -1:
+      url = ROOT_URL + img.get('src')
+      dir.Append(PhotoItem(url, 'Photo %d' % count, '', url))
+      count += 1
     
-  return dir.ToXML()
+  return dir
